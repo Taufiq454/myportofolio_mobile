@@ -11,8 +11,6 @@ class EducationFormPage extends StatefulWidget {
 class _EducationFormPageState extends State<EducationFormPage> {
   final _formKey = GlobalKey<FormState>();
 
-  // String _educationName = "";
-  // String _description = "";
   String _institution = "";
   String _degree = "S1"; // default
   String _studyProgram = "";
@@ -56,6 +54,9 @@ class _EducationFormPageState extends State<EducationFormPage> {
                   validator: (String? value) {
                     if (value == null || value.trim().isEmpty) {
                       return "Nama institusi tidak boleh kosong!";
+                    }
+                    if (value.trim().length > 50) {
+                      return "Nama institusi maksimal 50 karakter!";
                     }
                     return null;
                   },
@@ -108,6 +109,9 @@ class _EducationFormPageState extends State<EducationFormPage> {
                   validator: (String? value) {
                     if (value == null || value.trim().isEmpty) {
                       return "Program study tidak boleh kosong!";
+                    }
+                    if (value.trim().length > 100) {
+                      return "Program study maksimal 100 karakter!";
                     }
                     return null;
                   },
