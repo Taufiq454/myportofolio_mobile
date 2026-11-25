@@ -1,5 +1,10 @@
 import 'package:material_ui/material_ui.dart';
+import 'package:myportofolio_mobile/models/experience.dart';
+import 'package:myportofolio_mobile/services/api_client.dart';
+import 'package:myportofolio_mobile/services/auth_state.dart';
+import 'package:myportofolio_mobile/widgets/auth_guard.dart';
 import 'package:myportofolio_mobile/widgets/left_drawer.dart';
+import 'package:provider/provider.dart';
 
 class ExperienceFormPage extends StatefulWidget {
   const ExperienceFormPage({super.key});
@@ -16,6 +21,7 @@ class _ExperienceFormPageState extends State<ExperienceFormPage> {
   String _category = "full-time";
   String _thumbnail = "";
   DateTime? _endedAt;
+  bool _isSubmitting = false;
 
   // key = nilai yang dikirim ke Django, value = label yang tampil
   final Map<String, String> _categories = {
@@ -29,6 +35,109 @@ class _ExperienceFormPageState extends State<ExperienceFormPage> {
 
   String _formatDate(DateTime d) =>
       '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+
+  void _showSnack(String message) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  Future<void> _submit() async {
+    if (!_formKey.currentState!.validate()) return;
+
+    // Pastikan sudah login (membuka LoginScreen kalau belum).
+    if (!await ensureLoggedIn(context)) return;
+    if (!mounted) return;
+
+    final token = context.read<AuthState>().token;
+    if (token == null) return;
+
+    final newExperience = Experience(
+      title: _title.trim(),
+      description: _description.trim(),
+      category: _category,
+      thumbnail: _thumbnail,
+      endedAt: _endedAt,
+    );
+
+    setState(() {
+      _isSubmitting = true;
+    });
+
+    try {
+      final created = await context.read<ApiClient>().createExperience(
+        newExperience,
+        token: token,
+      );
+      if (!mounted) return;
+      await _showCreatedDialog(created);
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      if (e.statusCode == 401) {
+        // Token tidak valid/kedaluwarsa: keluar dari sesi, lalu minta login ulang.
+        await context.read<AuthState>().logout();
+        if (!mounted) return;
+        _showSnack('Sesi berakhir. Silakan login kembali.');
+        await ensureLoggedIn(context);
+      } else {
+        _showSnack('Gagal menyimpan (${e.statusCode}): ${e.message}');
+      }
+    } catch (_) {
+      if (!mounted) return;
+      _showSnack('Tidak dapat terhubung ke server.');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSubmitting = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _showCreatedDialog(Experience created) {
+    return showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Pengalaman berhasil ditambahkan!'),
+          content: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Judul: ${created.title}'),
+                Text(
+                  'Kategori: ${_categories[created.category] ?? created.category}',
+                ),
+                Text('Deskripsi: ${created.description}'),
+                Text(
+                  'Thumbnail: ${created.thumbnail.isEmpty ? "-" : created.thumbnail}',
+                ),
+                Text(
+                  'Tanggal Selesai: ${created.endedAt == null ? "Sekarang" : _formatDate(created.endedAt!)}',
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              child: const Text('OK'),
+              onPressed: () {
+                Navigator.pop(context);
+                setState(() {
+                  _title = "";
+                  _description = "";
+                  _category = "full-time";
+                  _thumbnail = "";
+                  _endedAt = null;
+                });
+                _formKey.currentState!.reset();
+              },
+            ),
+          ],
+        );
+      },
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -129,7 +238,7 @@ class _ExperienceFormPageState extends State<ExperienceFormPage> {
                 ),
               ),
 
-              // === Thumbnail ===
+              // === Thumbnail (opsional) ===
               Padding(
                 padding: const EdgeInsets.all(8.0),
                 child: TextFormField(
@@ -163,7 +272,7 @@ class _ExperienceFormPageState extends State<ExperienceFormPage> {
                 ),
               ),
 
-              // === Ended at ===
+              // === Ended at (opsional) ===
               Padding(
                 padding: const EdgeInsets.all(8.0),
                 child: ListTile(
@@ -210,56 +319,20 @@ class _ExperienceFormPageState extends State<ExperienceFormPage> {
                     style: ButtonStyle(
                       backgroundColor: WidgetStateProperty.all(Colors.indigo),
                     ),
-                    onPressed: () {
-                      if (_formKey.currentState!.validate()) {
-                        showDialog(
-                          context: context,
-                          builder: (context) {
-                            return AlertDialog(
-                              title: const Text(
-                                'Pengalaman berhasil ditambahkan!',
-                              ),
-                              content: SingleChildScrollView(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text('Judul: $_title'),
-                                    Text('Kategori: ${_categories[_category]}'),
-                                    Text('Deskripsi: $_description'),
-                                    Text(
-                                      'Thumbnail: ${_thumbnail.isEmpty ? "-" : _thumbnail}',
-                                    ),
-                                    Text(
-                                      'Tanggal Selesai: ${_endedAt == null ? "Sekarang" : _formatDate(_endedAt!)}',
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              actions: [
-                                TextButton(
-                                  child: const Text('OK'),
-                                  onPressed: () {
-                                    Navigator.pop(context);
-                                    setState(() {
-                                      _title = "";
-                                      _description = "";
-                                      _category = "full-time";
-                                      _thumbnail = "";
-                                      _endedAt = null;
-                                    });
-                                    _formKey.currentState!.reset();
-                                  },
-                                ),
-                              ],
-                            );
-                          },
-                        );
-                      }
-                    },
-                    child: const Text(
-                      "Save",
-                      style: TextStyle(color: Colors.white),
-                    ),
+                    onPressed: _isSubmitting ? null : _submit,
+                    child: _isSubmitting
+                        ? const SizedBox(
+                            height: 20,
+                            width: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Text(
+                            "Save",
+                            style: TextStyle(color: Colors.white),
+                          ),
                   ),
                 ),
               ),
